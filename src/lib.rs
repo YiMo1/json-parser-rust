@@ -1,9 +1,9 @@
 use std::{fmt, iter::Peekable, str::CharIndices};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 enum JsonValue {
     String(String),
-    Number(isize),
+    Number(f64),
     Null,
     Boolean(bool),
     JsonNode(Box<JsonNode>),
@@ -21,7 +21,7 @@ impl fmt::Display for JsonValue {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct JsonNode {
     name: String,
     key: Option<Box<JsonNode>>,
@@ -131,7 +131,60 @@ impl JsonParser {
     }
 
     fn parse_number(&self, chars: &mut Peekable<CharIndices>) -> JsonNode {
-        todo!()
+        if let Some((start, first_char)) = chars.next() {
+            let mut text = String::new();
+            match first_char {
+                '-' | '0'..='9' => text.push(first_char),
+                _ => panic!("Invalid Number"),
+            }
+            while let Some((pos, peek_char)) = chars.peek() {
+                let (_, char) = match peek_char {
+                    '.' => {
+                        if text.contains('.') {
+                            break;
+                        }
+                        let last_char = text.chars().nth_back(0).unwrap();
+                        match last_char {
+                            '0'..='9' => chars.next().unwrap(),
+                            _ => break,
+                        }
+                    }
+                    '0'..='9' => {
+                        if !text.contains('.') {
+                            let index = if first_char == '-' { 1 } else { 0 };
+                            match text.chars().nth(index) {
+                                Some('0') => break,
+                                _ => chars.next().unwrap(),
+                            }
+                        } else {
+                            chars.next().unwrap()
+                        }
+                    }
+                    _ => {
+                        return JsonNode {
+                            name: String::from("number"),
+                            key: None,
+                            value: Some(JsonValue::Number(text.parse().unwrap())),
+                            children: None,
+                            start,
+                            end: pos - 1,
+                        };
+                    }
+                };
+                text.push(char);
+            }
+            if chars.peek().is_none() && text.chars().nth_back(0).unwrap() != '.' {
+                return JsonNode {
+                    name: String::from("number"),
+                    key: None,
+                    value: Some(JsonValue::Number(text.parse().unwrap())),
+                    children: None,
+                    start,
+                    end: start + text.len() - 1,
+                };
+            }
+        }
+        panic!("Invalid Number");
     }
 
     fn parse_array(&self, chars: &mut Peekable<CharIndices>) -> JsonNode {
@@ -205,6 +258,94 @@ impl JsonParser {
 
 #[cfg(test)]
 mod tests {
+    mod number {
+        use crate::*;
+
+        fn number_node(value: f64, start: usize, end: usize) -> JsonNode {
+            JsonNode {
+                name: String::from("number"),
+                key: None,
+                value: Some(JsonValue::Number(value)),
+                children: None,
+                start,
+                end,
+            }
+        }
+
+        #[test]
+        fn float() {
+            assert_eq!(
+                JsonParser::new().parse("123.123"),
+                number_node(123.123, 0, 6)
+            );
+        }
+
+        #[test]
+        fn integer() {
+            assert_eq!(JsonParser::new().parse("123"), number_node(123.0, 0, 2));
+        }
+
+        #[test]
+        fn float_zero() {
+            assert_eq!(JsonParser::new().parse("0.0"), number_node(0.0, 0, 2));
+        }
+
+        #[test]
+        fn negative() {
+            assert_eq!(
+                JsonParser::new().parse("-123.123"),
+                number_node(-123.123, 0, 7)
+            );
+        }
+
+        #[test]
+        fn zero_integer() {
+            assert_eq!(JsonParser::new().parse("0"), number_node(0.0, 0, 0));
+        }
+
+        #[test]
+        fn leading_and_trailing_whitespace() {
+            assert_eq!(
+                JsonParser::new().parse(" \t123\n"),
+                number_node(123.0, 2, 4)
+            );
+        }
+
+        #[test]
+        fn negative_zero() {
+            assert_eq!(JsonParser::new().parse("-0"), number_node(-0.0, 0, 1));
+        }
+
+        #[test]
+        fn negative_fraction() {
+            assert_eq!(JsonParser::new().parse("-0.5"), number_node(-0.5, 0, 3));
+        }
+
+        #[test]
+        #[should_panic]
+        fn leading_zero_integer_is_invalid() {
+            JsonParser::new().parse("01");
+        }
+
+        #[test]
+        #[should_panic]
+        fn trailing_dot_is_invalid() {
+            JsonParser::new().parse("1.");
+        }
+
+        #[test]
+        #[should_panic]
+        fn multiple_dots_is_invalid() {
+            JsonParser::new().parse("1.2.3");
+        }
+
+        #[test]
+        #[should_panic]
+        fn minus_without_digits_is_invalid() {
+            JsonParser::new().parse("-");
+        }
+    }
+
     mod boolean {
         use crate::*;
 
