@@ -143,7 +143,37 @@ impl JsonParser {
     }
 
     fn parse_boolean(&self, chars: &mut Peekable<CharIndices>) -> JsonNode {
-        todo!()
+        let mut text = String::new();
+        while let Some((pos, char)) = chars.next() {
+            text.push(char);
+            if !"true".starts_with(&text) && !"false".starts_with(&text) {
+                break;
+            };
+
+            if text == "true" {
+                return JsonNode {
+                    name: String::from("boolean"),
+                    key: None,
+                    value: Some(JsonValue::Boolean(true)),
+                    children: None,
+                    start: pos - 3,
+                    end: pos,
+                };
+            }
+
+            if text == "false" {
+                return JsonNode {
+                    name: String::from("boolean"),
+                    key: None,
+                    value: Some(JsonValue::Boolean(false)),
+                    children: None,
+                    start: pos - 4,
+                    end: pos,
+                };
+            }
+        }
+
+        panic!("Invalid Boolean");
     }
 
     fn skip_white_space(&self, chars: &mut Peekable<CharIndices>) {
@@ -175,6 +205,36 @@ impl JsonParser {
 
 #[cfg(test)]
 mod tests {
+    mod boolean {
+        use crate::*;
+
+        #[test]
+        fn normal() {
+            assert_eq!(
+                JsonParser::new().parse("true"),
+                JsonNode {
+                    name: String::from("boolean"),
+                    key: None,
+                    value: Some(JsonValue::Boolean(true)),
+                    children: None,
+                    start: 0,
+                    end: 3
+                }
+            );
+            assert_eq!(
+                JsonParser::new().parse("false"),
+                JsonNode {
+                    name: String::from("boolean"),
+                    key: None,
+                    value: Some(JsonValue::Boolean(false)),
+                    children: None,
+                    start: 0,
+                    end: 4
+                }
+            );
+        }
+    }
+
     mod null {
         use crate::*;
         #[test]
