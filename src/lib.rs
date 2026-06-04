@@ -61,6 +61,7 @@ impl JsonParser {
 
     pub fn parse(&self, json_str: &str) -> JsonNode {
         let mut chars = json_str.char_indices().peekable();
+        self.skip_white_space(&mut chars);
         let node = self.value(&mut chars);
         self.skip_white_space(&mut chars);
         if let Some(_) = chars.next() {
@@ -70,7 +71,6 @@ impl JsonParser {
     }
 
     fn parse_string(&self, chars: &mut Peekable<CharIndices>) -> JsonNode {
-        self.skip_white_space(chars);
         if let Some((start, '"')) = chars.next() {
             let mut text = String::new();
             let mut translation_flag = false;
@@ -108,7 +108,26 @@ impl JsonParser {
     }
 
     fn parse_null(&self, chars: &mut Peekable<CharIndices>) -> JsonNode {
-        todo!();
+        let mut text = String::new();
+        while let Some((pos, char)) = chars.next() {
+            text.push(char);
+            if !"null".starts_with(&text) {
+                break;
+            };
+
+            if text == "null" {
+                return JsonNode {
+                    name: String::from("null"),
+                    key: None,
+                    value: Some(JsonValue::Null),
+                    children: None,
+                    start: pos - 3,
+                    end: pos,
+                };
+            }
+        }
+
+        panic!("Invalid Null");
     }
 
     fn parse_number(&self, chars: &mut Peekable<CharIndices>) -> JsonNode {
@@ -139,7 +158,6 @@ impl JsonParser {
     }
 
     fn value(&self, chars: &mut Peekable<CharIndices>) -> JsonNode {
-        self.skip_white_space(chars);
         match chars.peek() {
             Some((_, char)) => match char {
                 '"' => self.parse_string(chars),
@@ -157,6 +175,24 @@ impl JsonParser {
 
 #[cfg(test)]
 mod tests {
+    mod null {
+        use crate::*;
+        #[test]
+        fn normal() {
+            assert_eq!(
+                JsonParser::new().parse("null"),
+                JsonNode {
+                    name: String::from("null"),
+                    value: Some(JsonValue::Null),
+                    key: None,
+                    children: None,
+                    start: 0,
+                    end: 3
+                }
+            );
+        }
+    }
+
     mod string {
         use crate::*;
 
