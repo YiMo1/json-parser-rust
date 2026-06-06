@@ -232,7 +232,63 @@ impl JsonParser {
     }
 
     fn parse_object(&self, chars: &mut Peekable<CharIndices>) -> JsonNode {
-        todo!()
+        if let Some((start, '{')) = chars.next() {
+            let mut node = JsonNode {
+                name: String::from("object"),
+                key: None,
+                value: None,
+                children: Some(vec![]),
+                start,
+                end: start,
+            };
+            let mut children: Vec<JsonNode> = vec![];
+            self.skip_white_space(chars);
+            match chars.peek() {
+                Some(&(_, '}')) => {
+                    let (end, _) = chars.next().unwrap();
+                    node.children = Some(children);
+                    node.end = end;
+                    return node;
+                }
+                Some(_) => {
+                    self.ky(chars, &mut children);
+                    self.skip_white_space(chars);
+                    if let Some((end, '}')) = chars.next() {
+                        node.children = Some(children);
+                        node.end = end;
+                        return node;
+                    }
+                }
+                None => {}
+            };
+        }
+        panic!("Invalid Object");
+    }
+
+    fn ky(&self, chars: &mut Peekable<CharIndices>, children: &mut Vec<JsonNode>) {
+        self.skip_white_space(chars);
+        let &(start, _) = chars.peek().unwrap();
+        let key = self.parse_string(chars);
+        self.skip_white_space(chars);
+        if let Some((_, ':')) = chars.next() {
+            self.skip_white_space(chars);
+            let value = self.value(chars);
+            let &(end, _) = chars.peek().unwrap();
+            children.push(JsonNode {
+                name: String::from("proprety"),
+                key: Some(Box::new(key)),
+                value: Some(JsonValue::JsonNode(Box::new(value))),
+                children: None,
+                start,
+                end,
+            });
+            if let Some((_, ',')) = chars.peek() {
+                chars.next();
+                self.ky(chars, children);
+            }
+        } else {
+            panic!("Invalid Proprety");
+        }
     }
 
     fn parse_boolean(&self, chars: &mut Peekable<CharIndices>) -> JsonNode {
@@ -298,6 +354,191 @@ impl JsonParser {
 
 #[cfg(test)]
 mod tests {
+    mod object {
+        use crate::*;
+
+        fn string_node(value: &str, start: usize, end: usize) -> JsonNode {
+            JsonNode {
+                name: String::from("string"),
+                key: None,
+                value: Some(JsonValue::String(String::from(value))),
+                children: None,
+                start,
+                end,
+            }
+        }
+
+        fn number_node(value: f64, start: usize, end: usize) -> JsonNode {
+            JsonNode {
+                name: String::from("number"),
+                key: None,
+                value: Some(JsonValue::Number(value)),
+                children: None,
+                start,
+                end,
+            }
+        }
+
+        fn boolean_node(value: bool, start: usize, end: usize) -> JsonNode {
+            JsonNode {
+                name: String::from("boolean"),
+                key: None,
+                value: Some(JsonValue::Boolean(value)),
+                children: None,
+                start,
+                end,
+            }
+        }
+
+        fn null_node(start: usize, end: usize) -> JsonNode {
+            JsonNode {
+                name: String::from("null"),
+                key: None,
+                value: Some(JsonValue::Null),
+                children: None,
+                start,
+                end,
+            }
+        }
+
+        fn array_node(children: Vec<JsonNode>, start: usize, end: usize) -> JsonNode {
+            JsonNode {
+                name: String::from("array"),
+                key: None,
+                value: None,
+                children: Some(children),
+                start,
+                end,
+            }
+        }
+
+        fn object_node(children: Vec<JsonNode>, start: usize, end: usize) -> JsonNode {
+            JsonNode {
+                name: String::from("object"),
+                key: None,
+                value: None,
+                children: Some(children),
+                start,
+                end,
+            }
+        }
+
+        fn property_node(key: JsonNode, value: JsonNode, start: usize, end: usize) -> JsonNode {
+            JsonNode {
+                name: String::from("proprety"),
+                key: Some(Box::new(key)),
+                value: Some(JsonValue::JsonNode(Box::new(value))),
+                children: None,
+                start,
+                end,
+            }
+        }
+
+        #[test]
+        fn empty() {
+            assert_eq!(JsonParser::new().parse("{}"), object_node(vec![], 0, 1));
+        }
+
+        #[test]
+        fn empty_with_whitespace() {
+            assert_eq!(
+                JsonParser::new().parse(" \n{ \t}\r"),
+                object_node(vec![], 2, 5)
+            );
+        }
+
+        #[test]
+        fn single_property() {
+            assert_eq!(
+                JsonParser::new().parse("{\"name\":\"codex\"}"),
+                object_node(
+                    vec![property_node(
+                        string_node("name", 1, 6),
+                        string_node("codex", 8, 14),
+                        1,
+                        15,
+                    )],
+                    0,
+                    15,
+                )
+            );
+        }
+
+        #[test]
+        fn mixed_scalars() {
+            assert_eq!(
+                JsonParser::new().parse("{\"n\":1,\"b\":false,\"x\":null}"),
+                object_node(
+                    vec![
+                        property_node(string_node("n", 1, 3), number_node(1.0, 5, 5), 1, 6),
+                        property_node(string_node("b", 7, 9), boolean_node(false, 11, 15), 7, 16,),
+                        property_node(string_node("x", 17, 19), null_node(21, 24), 17, 25,),
+                    ],
+                    0,
+                    25,
+                )
+            );
+        }
+
+        #[test]
+        fn nested_values() {
+            assert_eq!(
+                JsonParser::new().parse("{\"arr\":[1],\"obj\":{\"ok\":true}}"),
+                object_node(
+                    vec![
+                        property_node(
+                            string_node("arr", 1, 5),
+                            array_node(vec![number_node(1.0, 8, 8)], 7, 9),
+                            1,
+                            10,
+                        ),
+                        property_node(
+                            string_node("obj", 11, 15),
+                            object_node(
+                                vec![property_node(
+                                    string_node("ok", 18, 21),
+                                    boolean_node(true, 23, 26),
+                                    18,
+                                    27,
+                                )],
+                                17,
+                                27,
+                            ),
+                            11,
+                            28,
+                        ),
+                    ],
+                    0,
+                    28,
+                )
+            );
+        }
+
+        #[test]
+        #[should_panic]
+        fn missing_colon_is_invalid() {
+            JsonParser::new().parse("{\"a\" 1}");
+        }
+
+        #[test]
+        #[should_panic]
+        fn missing_closing_brace_is_invalid() {
+            JsonParser::new().parse("{\"a\":1");
+        }
+
+        #[test]
+        #[should_panic]
+        fn trailing_comma_is_invalid() {
+            JsonParser::new().parse("{\"a\":1,}");
+        }
+
+        #[test]
+        #[should_panic]
+        fn missing_comma_is_invalid() {
+            JsonParser::new().parse("{\"a\":1 \"b\":2}");
+        }
+    }
+
     mod number {
         use crate::*;
 
