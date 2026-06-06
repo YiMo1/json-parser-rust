@@ -34,6 +34,9 @@ pub struct JsonNode {
 impl fmt::Display for JsonNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{{ name: {}, ", self.name)?;
+        if let Some(value) = &self.key {
+            write!(f, "key: {}, ", value)?;
+        }
         if let Some(value) = &self.value {
             write!(f, "value: {}, ", value)?;
         }
