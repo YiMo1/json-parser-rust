@@ -41,7 +41,7 @@ impl fmt::Display for JsonNode {
             write!(f, "value: {}, ", value)?;
         }
         if let Some(children) = &self.children {
-            write!(f, "[")?;
+            write!(f, "children: [")?;
             for (index, item) in children.iter().enumerate() {
                 if index > 0 {
                     write!(f, ", ")?;
