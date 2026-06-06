@@ -188,7 +188,47 @@ impl JsonParser {
     }
 
     fn parse_array(&self, chars: &mut Peekable<CharIndices>) -> JsonNode {
-        todo!()
+        if let Some((start, '[')) = chars.next() {
+            let mut node = JsonNode {
+                name: String::from("array"),
+                key: None,
+                value: None,
+                children: Some(vec![]),
+                start,
+                end: start,
+            };
+            let mut children: Vec<JsonNode> = vec![];
+            self.skip_white_space(chars);
+            match chars.peek() {
+                Some(&(_, ']')) => {
+                    let (end, _) = chars.next().unwrap();
+                    node.children = Some(children);
+                    node.end = end;
+                    return node;
+                }
+                Some(_) => {
+                    self.items(chars, &mut children);
+                    self.skip_white_space(chars);
+                    if let Some((end, ']')) = chars.next() {
+                        node.children = Some(children);
+                        node.end = end;
+                        return node;
+                    }
+                }
+                None => {}
+            };
+        }
+        panic!("Invalid Array");
+    }
+
+    fn items(&self, chars: &mut Peekable<CharIndices>, children: &mut Vec<JsonNode>) {
+        self.skip_white_space(chars);
+        children.push(self.value(chars));
+        self.skip_white_space(chars);
+        if let Some((_, ',')) = chars.peek() {
+            chars.next();
+            self.items(chars, children);
+        }
     }
 
     fn parse_object(&self, chars: &mut Peekable<CharIndices>) -> JsonNode {
@@ -459,6 +499,128 @@ mod tests {
                     children: None
                 }
             );
+        }
+    }
+
+    mod array {
+        use crate::*;
+
+        fn string_node(value: &str, start: usize, end: usize) -> JsonNode {
+            JsonNode {
+                name: String::from("string"),
+                key: None,
+                value: Some(JsonValue::String(String::from(value))),
+                children: None,
+                start,
+                end,
+            }
+        }
+
+        fn number_node(value: f64, start: usize, end: usize) -> JsonNode {
+            JsonNode {
+                name: String::from("number"),
+                key: None,
+                value: Some(JsonValue::Number(value)),
+                children: None,
+                start,
+                end,
+            }
+        }
+
+        fn boolean_node(value: bool, start: usize, end: usize) -> JsonNode {
+            JsonNode {
+                name: String::from("boolean"),
+                key: None,
+                value: Some(JsonValue::Boolean(value)),
+                children: None,
+                start,
+                end,
+            }
+        }
+
+        fn null_node(start: usize, end: usize) -> JsonNode {
+            JsonNode {
+                name: String::from("null"),
+                key: None,
+                value: Some(JsonValue::Null),
+                children: None,
+                start,
+                end,
+            }
+        }
+
+        fn array_node(children: Vec<JsonNode>, start: usize, end: usize) -> JsonNode {
+            JsonNode {
+                name: String::from("array"),
+                key: None,
+                value: None,
+                children: Some(children),
+                start,
+                end,
+            }
+        }
+
+        #[test]
+        fn empty() {
+            assert_eq!(JsonParser::new().parse("[]"), array_node(vec![], 0, 1));
+        }
+
+        #[test]
+        fn empty_with_whitespace() {
+            assert_eq!(
+                JsonParser::new().parse(" \n[ \t]\r"),
+                array_node(vec![], 2, 5)
+            );
+        }
+
+        #[test]
+        fn mixed_scalars() {
+            assert_eq!(
+                JsonParser::new().parse("[\"hi\", 1, true, null]"),
+                array_node(
+                    vec![
+                        string_node("hi", 1, 4),
+                        number_node(1.0, 7, 7),
+                        boolean_node(true, 10, 13),
+                        null_node(16, 19),
+                    ],
+                    0,
+                    20,
+                )
+            );
+        }
+
+        #[test]
+        fn nested_array() {
+            assert_eq!(
+                JsonParser::new().parse("[[], [1]]"),
+                array_node(
+                    vec![
+                        array_node(vec![], 1, 2),
+                        array_node(vec![number_node(1.0, 6, 6)], 5, 7),
+                    ],
+                    0,
+                    8,
+                )
+            );
+        }
+
+        #[test]
+        #[should_panic]
+        fn missing_closing_bracket_is_invalid() {
+            JsonParser::new().parse("[1, 2");
+        }
+
+        #[test]
+        #[should_panic]
+        fn trailing_comma_is_invalid() {
+            JsonParser::new().parse("[1,]");
+        }
+
+        #[test]
+        #[should_panic]
+        fn missing_comma_is_invalid() {
+            JsonParser::new().parse("[1 2]");
         }
     }
 }
